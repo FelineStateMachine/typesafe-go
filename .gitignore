@@ -1,0 +1,14 @@
+# Build and test output
+coverage.out
+coverage.html
+*.test
+*.o
+
+# Local credentials and environment files
+.env
+.env.*
+
+# Editor and OS files
+.DS_Store
+.vscode/
+.idea/
