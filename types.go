@@ -15,8 +15,10 @@ type SystemOneRequest struct {
 
 // Validate checks the locally enforceable System One request constraints.
 func (r SystemOneRequest) Validate() error {
-	if err := validateTopLevelValue(r.State); err != nil {
+	if kind, err := topLevelKind(r.State); err != nil {
 		return fmt.Errorf("state: %w", err)
+	} else if kind == 'n' {
+		return fmt.Errorf("state is required and must not be null")
 	}
 	if len(r.Questions) == 0 {
 		return fmt.Errorf("questions must contain at least one question")
@@ -33,13 +35,20 @@ func (r SystemOneRequest) Validate() error {
 }
 
 func validateTopLevelValue(value any) error {
+	_, err := topLevelKind(value)
+	return err
+}
+
+// topLevelKind validates that value encodes as a JSON string, object, array,
+// or null, and returns its kind so callers can apply stricter rules.
+func topLevelKind(value any) (jsontext.Kind, error) {
 	encoded, err := jsonv2.Marshal(value)
 	if err != nil {
-		return fmt.Errorf("must be valid JSON: %w", err)
+		return 0, fmt.Errorf("must be valid JSON: %w", err)
 	}
 	kind := jsontext.Value(encoded).Kind()
 	if kind != 'n' && kind != '"' && kind != '{' && kind != '[' {
-		return fmt.Errorf("must be a JSON string, object, array, or null")
+		return 0, fmt.Errorf("must be a JSON string, object, array, or null")
 	}
-	return nil
+	return kind, nil
 }

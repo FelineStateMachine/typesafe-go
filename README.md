@@ -8,7 +8,7 @@ hosted service; it does not run inference locally.
 The module is pure Go and uses only the standard library.
 
 ```sh
-go get github.com/FelineStateMachine/typesafe-go@v0.1.0
+go get github.com/FelineStateMachine/typesafe-go@v0.2.0
 ```
 
 Documentation: [pkg.go.dev/github.com/FelineStateMachine/typesafe-go](https://pkg.go.dev/github.com/FelineStateMachine/typesafe-go)
@@ -141,6 +141,12 @@ retries. Caller cancellation is never retried. Redirects are rejected to avoid
 replaying API keys or state to another endpoint. When `WithHTTPClient` is used,
 the client configuration is copied before the SDK installs its redirect policy;
 the caller's `*http.Client` is never mutated.
+
+`SystemOne` validates requests locally before sending them, matching the
+hosted service's limits: `State` must not be null, a Noul needs instructions
+or a non-null criterion, a Choice has 2 to `MaxChoiceOptions` (255) labels,
+and a Score has 2 to `MaxScoreLevels` (10) non-null levels. Call
+`SystemOneRequest.Validate` to check a request without sending it.
 
 HTTP failures return `*APIError`, which exposes status, request ID, headers,
 method, URL, and response bytes without placing the body in its `Error()`

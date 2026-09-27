@@ -16,7 +16,7 @@ const DefaultBaseURL = "https://api.typesafe.ai"
 const DefaultModel = "jev-latest"
 
 // Version is the SDK version sent in diagnostic request headers.
-const Version = "0.1.0"
+const Version = "0.2.0"
 
 type clientConfig struct {
 	apiKey     string

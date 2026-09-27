@@ -2,6 +2,7 @@ package typesafe
 
 import (
 	jsonv2 "encoding/json/v2"
+	"fmt"
 	"reflect"
 	"strings"
 	"testing"
@@ -68,6 +69,57 @@ func TestRequestValidate(t *testing.T) {
 	}
 }
 
+func TestRequestValidateServiceLimits(t *testing.T) {
+	labels := func(n int) map[string]any {
+		criteria := make(map[string]any, n)
+		for i := range n {
+			criteria[fmt.Sprintf("o%d", i)] = nil
+		}
+		return criteria
+	}
+	levels := func(n int) []any {
+		criteria := make([]any, n)
+		for i := range criteria {
+			criteria[i] = fmt.Sprintf("l%d", i)
+		}
+		return criteria
+	}
+	var nilState *requestState
+	tests := []struct {
+		name    string
+		state   any
+		q       Question
+		wantErr string
+	}{
+		{"max choice labels", "x", ChoiceQuestion{Instructions: "x", Criteria: labels(MaxChoiceOptions)}, ""},
+		{"too many choice labels", "x", ChoiceQuestion{Instructions: "x", Criteria: labels(MaxChoiceOptions + 1)}, "at most 255 labels"},
+		{"max score levels", "x", ScoreQuestion{Instructions: "x", Criteria: levels(MaxScoreLevels)}, ""},
+		{"too many score levels", "x", ScoreQuestion{Instructions: "x", Criteria: levels(MaxScoreLevels + 1)}, "at most 10 levels"},
+		{"null score level", "x", ScoreQuestion{Instructions: "x", Criteria: []any{"low", nil}}, "must not be null"},
+		{"null choice instructions", "x", ChoiceQuestion{Criteria: labels(2)}, ""},
+		{"noul criteria only", "x", NoulQuestion{Criteria: &NoulCriteria{True: "yes"}}, ""},
+		{"noul without description", "x", NoulQuestion{Criteria: &NoulCriteria{}}, "requires instructions or criteria"},
+		{"noul empty", "x", NoulQuestion{}, "requires instructions or criteria"},
+		{"nil state", nil, NoulQuestion{Instructions: "x"}, "state is required"},
+		{"nil pointer state", nilState, NoulQuestion{Instructions: "x"}, "state is required"},
+		{"empty string state", "", NoulQuestion{Instructions: "x"}, ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := SystemOneRequest{State: tt.state, Questions: map[string]Question{"q": tt.q}}.Validate()
+			if tt.wantErr == "" {
+				if err != nil {
+					t.Fatalf("unexpected error: %v", err)
+				}
+				return
+			}
+			if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+				t.Fatalf("got %v, want error containing %q", err, tt.wantErr)
+			}
+		})
+	}
+}
+
 type requestState struct {
 	Name string `json:"name"`
 }
@@ -105,13 +157,13 @@ func TestRequestValidateQuestionPointers(t *testing.T) {
 	choice := &ChoiceQuestion{Instructions: "x", Criteria: map[string]any{"a": nil, "b": nil}}
 	score := &ScoreQuestion{Instructions: "x", Criteria: []any{"a", "b"}}
 	for name, question := range map[string]Question{"noul": noul, "choice": choice, "score": score} {
-		request := SystemOneRequest{Questions: map[string]Question{name: question}}
+		request := SystemOneRequest{State: "x", Questions: map[string]Question{name: question}}
 		if err := request.Validate(); err != nil {
 			t.Fatalf("%s: %v", name, err)
 		}
 	}
 	var nilNoul *NoulQuestion
-	if err := (SystemOneRequest{Questions: map[string]Question{"q": nilNoul}}).Validate(); err == nil {
+	if err := (SystemOneRequest{State: "x", Questions: map[string]Question{"q": nilNoul}}).Validate(); err == nil {
 		t.Fatal("typed nil question should be rejected")
 	}
 }

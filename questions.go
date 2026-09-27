@@ -7,6 +7,14 @@ import (
 	"fmt"
 )
 
+// API limits enforced by the hosted service.
+const (
+	// MaxChoiceOptions is the maximum number of labels in a ChoiceQuestion.
+	MaxChoiceOptions = 255
+	// MaxScoreLevels is the maximum number of levels in a ScoreQuestion.
+	MaxScoreLevels = 10
+)
+
 // Question is a typed System One question.
 //
 // The concrete question types are NoulQuestion, ChoiceQuestion, and
@@ -22,7 +30,8 @@ type NoulCriteria struct {
 	False any `json:"false"`
 }
 
-// NoulQuestion asks for the probability of a yes answer.
+// NoulQuestion asks for the probability of a yes answer. It requires
+// Instructions, a non-null criterion, or both.
 type NoulQuestion struct {
 	Instructions any           `json:"instructions"`
 	Criteria     *NoulCriteria `json:"criteria"`
@@ -30,7 +39,8 @@ type NoulQuestion struct {
 
 func (NoulQuestion) questionType() string { return "noul" }
 
-// ChoiceQuestion selects one label from Criteria.
+// ChoiceQuestion selects one label from Criteria, which must contain between
+// 2 and MaxChoiceOptions labels. A label's description may be nil.
 type ChoiceQuestion struct {
 	Instructions any            `json:"instructions"`
 	Criteria     map[string]any `json:"criteria"`
@@ -38,7 +48,8 @@ type ChoiceQuestion struct {
 
 func (ChoiceQuestion) questionType() string { return "choice" }
 
-// ScoreQuestion estimates a score using ordered rubric levels in Criteria.
+// ScoreQuestion estimates a score using ordered rubric levels in Criteria,
+// which must contain between 2 and MaxScoreLevels non-null levels.
 type ScoreQuestion struct {
 	Instructions any   `json:"instructions"`
 	Criteria     []any `json:"criteria"`
@@ -142,20 +153,31 @@ func validateQuestion(name string, question Question) error {
 func validateQuestionValue(name string, question Question) error {
 	switch value := question.(type) {
 	case NoulQuestion:
-		if err := validateTopLevelValue(value.Instructions); err != nil {
+		kind, err := topLevelKind(value.Instructions)
+		if err != nil {
 			return fmt.Errorf("question %q instructions: %w", name, err)
 		}
+		described := kind != 'n'
 		if value.Criteria != nil {
-			if err := validateTopLevelValue(value.Criteria.True); err != nil {
+			kind, err := topLevelKind(value.Criteria.True)
+			if err != nil {
 				return fmt.Errorf("question %q criteria.true: %w", name, err)
 			}
-			if err := validateTopLevelValue(value.Criteria.False); err != nil {
+			described = described || kind != 'n'
+			if kind, err = topLevelKind(value.Criteria.False); err != nil {
 				return fmt.Errorf("question %q criteria.false: %w", name, err)
 			}
+			described = described || kind != 'n'
+		}
+		if !described {
+			return fmt.Errorf("question %q noul requires instructions or criteria", name)
 		}
 	case ChoiceQuestion:
 		if len(value.Criteria) < 2 {
 			return fmt.Errorf("question %q choice criteria must contain at least two labels", name)
+		}
+		if len(value.Criteria) > MaxChoiceOptions {
+			return fmt.Errorf("question %q choice criteria must contain at most %d labels", name, MaxChoiceOptions)
 		}
 		if err := validateTopLevelValue(value.Instructions); err != nil {
 			return fmt.Errorf("question %q instructions: %w", name, err)
@@ -169,12 +191,17 @@ func validateQuestionValue(name string, question Question) error {
 		if len(value.Criteria) < 2 {
 			return fmt.Errorf("question %q score criteria must contain at least two levels", name)
 		}
+		if len(value.Criteria) > MaxScoreLevels {
+			return fmt.Errorf("question %q score criteria must contain at most %d levels", name, MaxScoreLevels)
+		}
 		if err := validateTopLevelValue(value.Instructions); err != nil {
 			return fmt.Errorf("question %q instructions: %w", name, err)
 		}
 		for index, criterion := range value.Criteria {
-			if err := validateTopLevelValue(criterion); err != nil {
+			if kind, err := topLevelKind(criterion); err != nil {
 				return fmt.Errorf("question %q criteria[%d]: %w", name, index, err)
+			} else if kind == 'n' {
+				return fmt.Errorf("question %q criteria[%d]: score level must not be null", name, index)
 			}
 		}
 	default:
